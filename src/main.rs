@@ -1,11 +1,14 @@
 use std::{
     env, io,
-    net::{SocketAddr, ToSocketAddrs, UdpSocket},
+    net::{SocketAddr, ToSocketAddrs},
     os::unix::prelude::AsRawFd,
-    thread,
+    sync::Arc,
 };
 
-fn main() {
+use tokio::{io::Interest, net::UdpSocket};
+
+#[tokio::main]
+async fn main() {
     let _ = env_logger::try_init();
     let args: Vec<String> = env::args().collect();
     if args.len() != 3 {
@@ -41,44 +44,65 @@ fn main() {
         {
             socket.set_reuse_address(true).unwrap();
             socket.set_reuse_port(true).unwrap();
-            socket.set_nonblocking(false).unwrap();
+            socket.set_nonblocking(true).unwrap();
             socket.bind(&listen_addr.into()).unwrap();
         }
-        let handle = thread::spawn(move || {
-            socket_thread(socket.into(), id);
+        let socket = UdpSocket::from_std(socket.into()).unwrap();
+        let handle = tokio::spawn(async move {
+            socket_ready_thread(Arc::new(socket), id).await;
         });
         threads.push(handle);
     }
 
     for handle in threads {
-        handle.join().unwrap();
+        handle.await.unwrap();
     }
     log::info!("done");
 }
 
-fn socket_thread(socket: UdpSocket, id: usize) {
-    let mut buf = [0u8; 1024 * 64];
+async fn socket_ready_thread(socket: Arc<UdpSocket>, reuse_port_id: usize) {
     log::info!(
-        "thread started: {{ thread ID: {}, socket FD: {} }}",
-        id,
+        "socket_ready_thread started: {{ REUSEPORT ID: {}, socket FD: {} }}",
+        reuse_port_id,
         socket.as_raw_fd()
     );
     loop {
-        match socket.recv_from(&mut buf) {
+        log::trace!(
+            "socket_ready_thread waiting for socket ready: {{ reuse_port_id: {} }}",
+            reuse_port_id
+        );
+        let ready = socket.ready(Interest::READABLE).await.unwrap();
+        let socket_clone = Arc::clone(&socket);
+        if ready.is_readable() {
+            tokio::spawn(async move {
+                socket_receive_thread(socket_clone, reuse_port_id).await;
+            });
+        }
+    }
+}
+
+async fn socket_receive_thread(socket: Arc<UdpSocket>, reuse_port_id: usize) {
+    let mut buf = [0u8; 1500];
+    log::trace!(
+        "socket_receive_thread started: {{ REUSEPORT ID: {} }}",
+        reuse_port_id,
+    );
+    loop {
+        match socket.recv_from(&mut buf).await {
             Ok((amt, src)) => {
                 log::trace!(
-                    "thread {} received {} bytes from {}: {{ content_bytes: {:X?}, content_utf8: \"{}\" }}",
-                    id,
+                    "REUSEPORT {} received {} bytes from {}: {{ content_bytes: {:X?}, content_utf8: \"{}\" }}",
+                    reuse_port_id,
                     amt,
                     src,
                     &buf[..amt],
                     String::from_utf8_lossy(&buf[0..amt])
                 );
-                socket.send_to(&buf[0..amt], src).unwrap();
+                socket.send_to(&buf[0..amt], src).await.unwrap();
             }
             Err(err) => match err.kind() {
                 io::ErrorKind::WouldBlock => {
-                    continue;
+                    break;
                 }
                 _ => {
                     panic!("{:?}", err);
