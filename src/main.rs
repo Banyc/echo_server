@@ -8,10 +8,26 @@ use std::{
 fn main() {
     let _ = env_logger::try_init();
     let args: Vec<String> = env::args().collect();
+    if args.len() != 3 {
+        print_usage_and_exit(&args[0]);
+    }
     let listen_addr = args[1].clone();
-    let num_socket = args[2].parse::<usize>().unwrap();
+    let num_socket = args[2]
+        .parse::<usize>()
+        .map_err(|e| {
+            eprintln!("{}", e);
+            print_usage_and_exit(&args[0]);
+        })
+        .unwrap();
 
-    let listen_addrs: Vec<SocketAddr> = listen_addr.to_socket_addrs().unwrap().collect();
+    let listen_addrs: Vec<SocketAddr> = listen_addr
+        .to_socket_addrs()
+        .map_err(|e| {
+            eprintln!("{}", e);
+            print_usage_and_exit(&args[0]);
+        })
+        .unwrap()
+        .collect();
     let listen_addr = listen_addrs[0];
 
     let domain = match listen_addr {
@@ -70,4 +86,12 @@ fn socket_thread(socket: UdpSocket, id: usize) {
             },
         };
     }
+}
+
+fn print_usage_and_exit(program_name: &str) -> ! {
+    eprintln!(
+        "Usage: {} <listen address> <number of sockets>",
+        program_name
+    );
+    std::process::exit(1);
 }
