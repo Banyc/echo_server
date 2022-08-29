@@ -93,5 +93,5 @@ fn print_usage_and_exit(program_name: &str) -> ! {
         "Usage: {} <listen address> <number of sockets>",
         program_name
     );
-    std::process::exit(1);
+    std::process::exit(1)
 }
