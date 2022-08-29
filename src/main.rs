@@ -41,7 +41,7 @@ fn main() {
         {
             socket.set_reuse_address(true).unwrap();
             socket.set_reuse_port(true).unwrap();
-            socket.set_nonblocking(true).unwrap();
+            socket.set_nonblocking(false).unwrap();
             socket.bind(&listen_addr.into()).unwrap();
         }
         let handle = thread::spawn(move || {
