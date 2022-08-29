@@ -57,7 +57,7 @@ fn main() {
 }
 
 fn socket_thread(socket: UdpSocket, id: usize) {
-    let mut buf = [0u8; 1024];
+    let mut buf = [0u8; 1024 * 64];
     log::info!(
         "thread started: {{ thread ID: {}, socket FD: {} }}",
         id,
