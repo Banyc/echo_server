@@ -90,7 +90,7 @@ fn socket_thread(socket: UdpSocket, id: usize) {
 
 fn print_usage_and_exit(program_name: &str) -> ! {
     eprintln!(
-        "Usage: {} <listen address> <number of sockets>",
+        "Usage: RUST_LOG=<logging level> {} <listen address> <number of sockets>",
         program_name
     );
     std::process::exit(1)
