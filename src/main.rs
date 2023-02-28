@@ -78,7 +78,7 @@ fn socket_thread(socket: UdpSocket, id: usize) {
                 socket.send_to(&buf[0..amt], src).unwrap();
             }
             Err(err) => match err.kind() {
-                io::ErrorKind::WouldBlock => {
+                io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted => {
                     continue;
                 }
                 _ => {
@@ -95,4 +95,19 @@ fn print_usage_and_exit(program_name: &str) -> ! {
         program_name
     );
     std::process::exit(1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn zero_payload() {
+        let buf = [0u8; 1024];
+        let amt = 0;
+        let src = "127.0.0.2:12341".parse::<SocketAddr>().unwrap();
+        let socket =
+            socket2::Socket::new(socket2::Domain::IPV4, socket2::Type::DGRAM, None).unwrap();
+        socket.send_to(&buf[0..amt], &src.into()).unwrap();
+    }
 }
