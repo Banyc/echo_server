@@ -1,97 +1,89 @@
 use std::{
-    env, io,
-    net::{SocketAddr, ToSocketAddrs, UdpSocket},
-    os::unix::prelude::AsRawFd,
-    thread,
+    env,
+    net::{SocketAddr, ToSocketAddrs},
 };
 
-fn main() {
-    let _ = env_logger::try_init();
+use echo_server::{tcp_echo, udp_echo};
+use thiserror::Error;
+
+#[tokio::main]
+async fn main() {
+    let _ = tracing_subscriber::fmt::init();
+
+    // Parse command line arguments.
+    let args = match parse() {
+        Ok(args) => args,
+        Err(err) => {
+            eprintln!("error: {}", err);
+            let program_name = env::args().next().unwrap();
+            print_usage_and_exit(&program_name);
+        }
+    };
+
+    // Spawn echo servers.
+    let tokio_threads = tcp_echo::spawn_threads(args.listen_addr, args.num_tcp_sockets).unwrap();
+    let std_threads = udp_echo::spawn_threads(args.listen_addr, args.num_udp_sockets).unwrap();
+
+    // Wait for threads to finish.
+    let mut set = tokio::task::JoinSet::new();
+    for handle in tokio_threads {
+        set.spawn(handle);
+    }
+    while let Some(res) = set.join_next().await {
+        res.unwrap().unwrap().unwrap();
+    }
+    for handle in std_threads {
+        handle.join().unwrap().unwrap();
+    }
+}
+
+struct Args {
+    listen_addr: SocketAddr,
+    num_tcp_sockets: usize,
+    num_udp_sockets: usize,
+}
+
+#[derive(Debug, Error)]
+enum ParseError {
+    #[error("invalid listen address")]
+    ListenAddress(std::io::Error),
+    #[error("invalid number of TCP sockets")]
+    NumberOfTcpSockets(std::num::ParseIntError),
+    #[error("invalid number of UDP sockets")]
+    NumberOfUdpSockets(std::num::ParseIntError),
+}
+
+fn parse() -> Result<Args, ParseError> {
     let args: Vec<String> = env::args().collect();
-    if args.len() != 3 {
+    if args.len() != 4 {
         print_usage_and_exit(&args[0]);
     }
     let listen_addr = args[1].clone();
-    let num_socket = args[2]
-        .parse::<usize>()
-        .map_err(|e| {
-            eprintln!("{}", e);
-            print_usage_and_exit(&args[0]);
-        })
-        .unwrap();
+    let num_tcp_sockets = args[2].parse::<usize>().map_err(|e| {
+        return ParseError::NumberOfTcpSockets(e);
+    })?;
+    let num_udp_sockets = args[3].parse::<usize>().map_err(|e| {
+        return ParseError::NumberOfUdpSockets(e);
+    })?;
 
     let listen_addrs: Vec<SocketAddr> = listen_addr
         .to_socket_addrs()
         .map_err(|e| {
-            eprintln!("{}", e);
-            print_usage_and_exit(&args[0]);
-        })
-        .unwrap()
+            return ParseError::ListenAddress(e);
+        })?
         .collect();
     let listen_addr = listen_addrs[0];
 
-    let domain = match listen_addr {
-        SocketAddr::V4(_) => socket2::Domain::IPV4,
-        SocketAddr::V6(_) => socket2::Domain::IPV6,
-    };
-
-    let mut threads = vec![];
-    for id in 0..num_socket {
-        let socket = socket2::Socket::new(domain, socket2::Type::DGRAM, None).unwrap();
-        {
-            socket.set_reuse_address(true).unwrap();
-            socket.set_reuse_port(true).unwrap();
-            socket.set_nonblocking(false).unwrap();
-            socket.bind(&listen_addr.into()).unwrap();
-        }
-        let handle = thread::spawn(move || {
-            socket_thread(socket.into(), id);
-        });
-        threads.push(handle);
-    }
-
-    for handle in threads {
-        handle.join().unwrap();
-    }
-    log::info!("done");
-}
-
-fn socket_thread(socket: UdpSocket, id: usize) {
-    let mut buf = [0u8; 1024 * 64];
-    log::info!(
-        "thread started: {{ thread ID: {}, socket FD: {}, local address: {} }}",
-        id,
-        socket.as_raw_fd(),
-        socket.local_addr().unwrap()
-    );
-    loop {
-        match socket.recv_from(&mut buf) {
-            Ok((amt, src)) => {
-                log::trace!(
-                    "thread {} received {} bytes from {}: {{ content_bytes: {:X?}, content_utf8: \"{}\" }}",
-                    id,
-                    amt,
-                    src,
-                    &buf[..amt],
-                    String::from_utf8_lossy(&buf[0..amt])
-                );
-                socket.send_to(&buf[0..amt], src).unwrap();
-            }
-            Err(err) => match err.kind() {
-                io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted => {
-                    continue;
-                }
-                _ => {
-                    panic!("{:?}", err);
-                }
-            },
-        };
-    }
+    Ok(Args {
+        listen_addr,
+        num_tcp_sockets,
+        num_udp_sockets,
+    })
 }
 
 fn print_usage_and_exit(program_name: &str) -> ! {
     eprintln!(
-        "Usage: RUST_LOG=<logging level> {} <listen address> <number of sockets>",
+        "Usage: RUST_LOG=<logging level> {} <listen address> <number of TCP sockets> <number of UDP sockets>",
         program_name
     );
     std::process::exit(1)
