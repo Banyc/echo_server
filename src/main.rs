@@ -86,6 +86,7 @@ fn print_usage_and_exit(program_name: &str) -> ! {
         "Usage: RUST_LOG=<logging level> {} <listen address> <number of TCP sockets> <number of UDP sockets>",
         program_name
     );
+    eprintln!("Hint: num_cpus={}", num_cpus::get());
     std::process::exit(1)
 }
 
