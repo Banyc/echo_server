@@ -5,7 +5,7 @@ use std::{
     thread,
 };
 
-use tracing::{info, instrument, trace};
+use tracing::{error, info, instrument, trace};
 
 use crate::domain;
 
@@ -49,6 +49,7 @@ pub fn echo(socket: UdpSocket, id: usize) -> io::Result<()> {
                     continue;
                 }
                 _ => {
+                    error!(?err, "UDP thread failed");
                     return Err(err);
                 }
             },
