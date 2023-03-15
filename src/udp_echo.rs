@@ -36,7 +36,8 @@ pub fn spawn_threads(
 #[instrument(skip(socket))]
 pub fn echo(socket: UdpSocket, id: usize) -> io::Result<()> {
     let mut buf = [0u8; 1024 * 64];
-    info!(?id, fd = ?socket.as_raw_fd(), "UDP thread started");
+    let addr = socket.local_addr()?;
+    info!(?id, fd = ?socket.as_raw_fd(), ?addr, "UDP thread started");
     loop {
         match socket.recv_from(&mut buf) {
             Ok((amt, src)) => {

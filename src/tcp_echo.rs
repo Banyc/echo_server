@@ -35,7 +35,8 @@ pub fn spawn_threads(
 
 #[instrument(skip(socket))]
 pub async fn echo(socket: tokio::net::TcpListener, id: usize) -> io::Result<()> {
-    info!(?id, fd = ?socket.as_raw_fd(), "TCP thread started");
+    let addr = socket.local_addr()?;
+    info!(?id, fd = ?socket.as_raw_fd(), ?addr, "TCP thread started");
     loop {
         trace!("TCP thread waiting for connection");
         let (stream, src) = socket.accept().await?;
