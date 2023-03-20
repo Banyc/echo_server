@@ -8,7 +8,7 @@ use thiserror::Error;
 
 #[tokio::main]
 async fn main() {
-    let _ = tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt::init();
 
     // Parse command line arguments.
     let args = match parse() {
@@ -59,18 +59,16 @@ fn parse() -> Result<Args, ParseError> {
         print_usage_and_exit(&args[0]);
     }
     let listen_addr = args[1].clone();
-    let num_tcp_sockets = args[2].parse::<usize>().map_err(|e| {
-        return ParseError::NumberOfTcpSockets(e);
-    })?;
-    let num_udp_sockets = args[3].parse::<usize>().map_err(|e| {
-        return ParseError::NumberOfUdpSockets(e);
-    })?;
+    let num_tcp_sockets = args[2]
+        .parse::<usize>()
+        .map_err(ParseError::NumberOfTcpSockets)?;
+    let num_udp_sockets = args[3]
+        .parse::<usize>()
+        .map_err(ParseError::NumberOfUdpSockets)?;
 
     let listen_addrs: Vec<SocketAddr> = listen_addr
         .to_socket_addrs()
-        .map_err(|e| {
-            return ParseError::ListenAddress(e);
-        })?
+        .map_err(ParseError::ListenAddress)?
         .collect();
     let listen_addr = listen_addrs[0];
 
