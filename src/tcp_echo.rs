@@ -81,8 +81,8 @@ mod tests {
         let pkt = b"hello world";
         socket.write_all(pkt).unwrap();
         let mut buf = [0u8; 1024];
-        let mut buf = &mut buf[..pkt.len()];
-        socket.read_exact(&mut buf).unwrap();
+        let buf = &mut buf[..pkt.len()];
+        socket.read_exact(buf).unwrap();
         assert_eq!(buf, pkt);
     }
 }
