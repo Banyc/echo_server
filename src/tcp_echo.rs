@@ -26,24 +26,31 @@ pub fn spawn_threads(
             socket.listen(BACKLOG as i32)?;
         }
         let tokio_listener = tokio::net::TcpListener::from_std(socket.into())?;
-        let handle = tokio::spawn(echo(tokio_listener, id));
+        let handle = tokio::spawn(listen(tokio_listener, id));
         threads.push(handle);
     }
 
     Ok(threads)
 }
 
-#[instrument(skip(socket))]
-pub async fn echo(socket: tokio::net::TcpListener, id: usize) -> io::Result<()> {
-    let addr = socket.local_addr()?;
-    info!(?id, fd = ?socket.as_raw_fd(), ?addr, "TCP thread started");
+#[instrument(skip(listener))]
+pub async fn listen(listener: tokio::net::TcpListener, id: usize) -> io::Result<()> {
+    let addr = listener.local_addr()?;
+    info!(?id, fd = ?listener.as_raw_fd(), ?addr, "TCP thread started");
     loop {
         trace!("TCP thread waiting for connection");
-        let (stream, src) = socket.accept().await?;
+        let (stream, src) = match listener.accept().await {
+            Ok((stream, src)) => (stream, src),
+            Err(err) => {
+                error!(?err, "TCP accept failed");
+                // Keep trying to accept connections
+                continue;
+            }
+        };
         trace!(?src, "TCP thread accepted connection");
         tokio::spawn(async move {
             if let Err(err) = echo_stream(stream, id).await {
-                error!(?err, "TCP thread failed");
+                error!(?err, "TCP stream failed");
             }
         });
     }
